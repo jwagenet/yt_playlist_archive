@@ -17,9 +17,10 @@ with open(KEY_FILE, "r") as f:
 YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
 
-class Playlist():
-    def __init__(self, id):
-        self.id, self.url = get_id_and_url(id, PLAYLIST_URL_STEM)
+    def __init__(self, id_or_url):
+        id_and_url = get_id_and_url(id_or_url, PLAYLIST_URL_STEM)
+        self.id = id_and_url["id"]
+        self.url = id_and_url["url"]
 
         self.get_info()
 
@@ -53,11 +54,9 @@ class Playlist():
         return [Video().from_youtube_video(item) for item in items]
 
 
-
-class Video():
-    def __init__(self, id=None):
-        if id:
-            self.id, self.url = get_id_and_url(id, VIDEO_URL_STEM)
+    def __init__(self, id_or_url=None):
+        if id_or_url:
+            self.update(get_id_and_url(id_or_url, VIDEO_URL_STEM))
             self.get_video()
 
 
@@ -129,11 +128,9 @@ class Video():
         kind = "youtube#video"
         if isinstance(youtube_video, dict):
             if "kind" in youtube_video and youtube_video["kind"] == kind:
-                id, url = get_id_and_url(youtube_video["id"], VIDEO_URL_STEM)
+                self.update(get_id_and_url(youtube_video["id"], VIDEO_URL_STEM))
 
-            elif "snippet" in youtube_video and "resourceId" in youtube_video["snippet"] \
-            and "kind" in youtube_video["snippet"]["resourceId"] and youtube_video["snippet"]["resourceId"]["kind"] == "youtube#video":
-                id, url = get_id_and_url(youtube_video["snippet"]["resourceId"]["videoId"], VIDEO_URL_STEM)
+                self.update(get_id_and_url(youtube_video["snippet"]["resourceId"]["videoId"], VIDEO_URL_STEM))
 
             else:
 
@@ -177,12 +174,8 @@ def get_videos_from_ids(ids):
     video_ids = [video.id for video in videos]
     for id in ids:
         if id not in video_ids:
-            id, url = get_id_and_url(id, VIDEO_URL_STEM)
-            video = Video().update({
-                "id": id,
-                "url": url,
-                "status": "unavailable"
-            })
+            video = Video().update(get_id_and_url(id, VIDEO_URL_STEM))
+            video.update({"status": "unavailable"})
             videos.append(video)
 
     videos = sorted(videos, key=lambda x:ids.index(x.id))
@@ -190,12 +183,14 @@ def get_videos_from_ids(ids):
     return videos
 
 
-def get_id_and_url(id, stem):
-    id = id if stem not in id else id.replace(stem, "")
-    url = stem + id
+def get_id_and_url(id_or_url, stem):
+    if "&" in id_or_url:
+        chunks = id_or_url.split("&")
+        id_or_url = chunks[0]
 
-    return id, url
+    id = id_or_url if stem not in id_or_url else id_or_url.replace(stem, "")
 
+    return {"id": id, "url": stem + id}
 
 
 def get_pagenated_response(callback, params, desc, max_results=MAX_RESULTS):

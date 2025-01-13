@@ -33,7 +33,7 @@ def get_current_videos(playlist, use_cache=False):
 
         video_ids = []
         for url in video_urls:
-            id, _ = get_id_and_url(url, VIDEO_URL_STEM)
+            id = get_id_and_url(url, VIDEO_URL_STEM)["id"]
             video_ids.append(id)
 
         videos = get_videos_from_ids(video_ids)
