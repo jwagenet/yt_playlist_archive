@@ -22,7 +22,9 @@ class Table:
                 self.connection.close()
 
     def create(self, columns, primary):
-        return self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.name}({', '.join(columns)}, PRIMARY KEY ({primary}))")
+        return self.cursor.execute(
+            f"CREATE TABLE IF NOT EXISTS {self.name}({', '.join(columns)}, PRIMARY KEY ({primary}))"
+        )
 
     def insert(self, data):
         payload = list(data.values())
@@ -33,15 +35,15 @@ class Table:
     def update(self, data, where_key, set_key):
         payload = [where_key + set_key + data[set_key]]
 
-        command =  f"UPDATE {self.name} SET {set_key} = ? WHERE {where_key} = ?"
+        command = f"UPDATE {self.name} SET {set_key} = ? WHERE {where_key} = ?"
         return self.cursor.executem(command, payload)
 
     def upsert(self, data, conflict_key, set_key):
         payload = list(data.values())
         payload.append(data[set_key])
 
-        command = f"""INSERT INTO {self.name} ({', '.join(list(data.keys()))})
-            VALUES({', '.join(['?'] * len(data))}) 
+        command = f"""INSERT INTO {self.name} ({", ".join(list(data.keys()))})
+            VALUES({", ".join(["?"] * len(data))}) 
             ON CONFLICT({conflict_key}) 
             DO UPDATE SET {set_key} = ?"""
         return self.cursor.execute(command, payload)
