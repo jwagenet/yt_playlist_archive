@@ -6,52 +6,57 @@ import time
 from rich.progress import Progress
 
 from sqlite_helper import Table
-from youtube import VIDEO_URL_STEM, Playlist, Video, get_id_and_url, get_videos_from_ids
+from youtube import Playlist, Video, get_videos_from_ids
 
 ## for finding deleted video titles https://findyoutubevideo.thetechrobo.ca/
 
 
-def get_current_videos(playlist, use_cache=False):
-    """Get all video urls found in playlist.
-    May load from cached url result if older than one day.
-
-    Returns list of urls.
-    """
-
-    cache_file_name = f"cached_urls_{playlist.title}.json"
-
-    if (
-        use_cache
-        and os.path.exists(cache_file_name)
-        and (time.time() - os.path.getmtime(cache_file_name)) < 60 * 60 * 24
-    ):
-        print("Getting videos from recent cache")
-        with open(cache_file_name, "r", encoding="utf-8") as f:
-            video_urls = json.load(f)
-
-        # strip parameters from url
-        for i, url in enumerate(video_urls):
-            if "&" in url:
-                chunks = url.split("&")
-                video_urls[i] = chunks[0]
-
-        video_ids = []
-        for url in video_urls:
-            id = get_id_and_url(url, VIDEO_URL_STEM)["id"]
-            video_ids.append(id)
-
-        videos = get_videos_from_ids(video_ids)
+def get_videos_from_file(path):
+    _, extension = os.path.splitext(path)
+    if extension == ".json":
+        with open(path, "r", encoding="utf-8") as f:
+            video_info = json.load(f)
 
     else:
-        print("Getting videos from playlist")
-        videos = playlist.get_videos()
+        raise NotImplementedError
 
-        video_ids = [video.id for video in videos]
-        if use_cache:
-            with open(cache_file_name, "w", encoding="utf-8") as f:
-                json.dump(list(video_ids), f, ensure_ascii=False, indent=4)
+    if isinstance(video_info[0], str):
+        return get_videos_from_ids(video_info)
 
-    return videos
+    elif isinstance(video_info[0], dict):
+        return [Video().update(video) for video in video_info]
+
+    else:
+        raise NotImplementedError
+
+
+def dump_videos_to_file(path, videos):
+    _, extension = os.path.splitext(path)
+    if extension == ".json":
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(
+                videos,
+                f,
+                default=lambda o: o.__dict__,
+                ensure_ascii=False,
+                indent=4,
+            )
+
+    else:
+        raise NotImplementedError
+
+
+def setup_playlist_tables(db_path, playlist):
+    # setup main table
+    data = playlist.to_dict()
+    columns = Video().to_dict().keys()
+    with Table(db_path, "playlists") as table:
+        table.create(list(data.keys()), "id")
+        table.insert(data)
+
+        # spoof title to set child table
+        table.name = data["title"].lower()
+        table.create(columns, "id")
 
 
 def get_updated_videos(old_videos, new_videos):
@@ -113,8 +118,9 @@ def get_updated_videos(old_videos, new_videos):
     return updated_videos
 
 
-def update_archive(playllst_title, new_videos):
+def update_archive(db_path, playllst_title, new_videos):
     # get archive from playlist table
+    columns = Video().to_dict().keys()
     with Table(db_path, playllst_title) as table:
         archive_data = table.select(columns)
 
@@ -134,41 +140,43 @@ if __name__ == "__main__":
         description="Archive YouTube video properties and update over time to catch content deletions",
     )
     parser.add_argument("id_or_url")
-    parser.add_argument("-t", "--playlist_title")
-    parser.add_argument("-u", "--video_urls")
+    parser.add_argument("-c", "--cache", action="store_true")
+    parser.add_argument("-d", "--db_path", default="playlist_archive.db", type=str)
+    parser.add_argument("-e", "--export_file", default=None, type=str)
+    parser.add_argument("-i", "--import_file", default=None, type=str)
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    db_path = "playlist_archive.db"
+    if args.id_or_url:
+        playlist = Playlist(args.id_or_url)
 
-    playlist = Playlist(args.id_or_url)
-    playlist.title = (
-        playlist.title if args.playlist_title is None else args.playlist_title
-    )
+    else:
+        raise NotImplementedError
+    # playlist.title = (
+    #     playlist.title if args.playlist_title is None else args.playlist_title
+    # )
 
-    # setup main table
-    data = playlist.to_dict()
-    columns = Video().to_dict().keys()
-    with Table(db_path, "playlists") as table:
-        table.create(list(data.keys()), "id")
-        table.insert(data)
+    if args.export_file:
+        raise NotImplementedError
 
-        # spoof title to set child table
-        table.title = data["title"]
-        table.create(columns, "id")
+    else:
+        setup_playlist_tables(args.db_path, playlist)
+        cache_path = f"cache_{playlist.title}.json"
 
-    new_videos = playlist.get_videos()
-    update_archive(playlist.title, new_videos)
+        if args.import_file and os.path.exists(args.import_file):
+            new_videos = get_videos_from_file(args.import_file)
 
-    # if os.path.exists(archive_file_name):
-    #     with open(archive_file_name, "r", encoding="utf-8") as f:
-    #         archive_info = json.load(f)
+        elif (
+            args.cache
+            and os.path.exists(cache_path)
+            and (time.time() - os.path.getmtime(cache_path)) < 60 * 60 * 24
+        ):
+            new_videos = get_videos_from_file(cache_path)
 
-    # with open(archive_file_name, "w", encoding="utf-8") as f:
-    #     json.dump(
-    #         archive_videos,
-    #         f,
-    #         default=lambda o: o.__dict__,
-    #         ensure_ascii=False,
-    #         indent=4,
-    #     )
+        else:
+            new_videos = playlist.get_videos()
+
+        update_archive(args.db_path, playlist.title, new_videos)
+
+        if args.cache:
+            dump_videos_to_file(cache_path, new_videos)
