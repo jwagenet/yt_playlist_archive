@@ -22,6 +22,7 @@ class Playlist:
         id_and_url = get_id_and_url(id_or_url, PLAYLIST_URL_STEM)
         self.id = id_and_url["id"]
         self.url = id_and_url["url"]
+        self.title = ""
 
         self.get_info()
 
@@ -52,9 +53,17 @@ class Playlist:
         items = get_pagenated_response(callback, params, desc)
         return [Video().from_youtube_video(item) for item in items]
 
+    def to_dict(self):
+        return {key: value for key, value in self.__dict__.items()}
+
 
 class Video:
     def __init__(self, id_or_url=None):
+        self. id = ""
+        self.url = ""
+        self.title = ""
+        self.status = "unavailable"
+
         if id_or_url:
             self.update(get_id_and_url(id_or_url, VIDEO_URL_STEM))
             self.get_video()
@@ -70,7 +79,9 @@ class Video:
 
     def __eq__(self, other):
         # comparing id only because other properties could change
-        return self.id == other.id
+        if isinstance(other, Video):
+            return self.id == other.id
+        return False
 
     def update(self, other):
         """Update Video properties from other, which could be dict or Video"""
@@ -88,6 +99,9 @@ class Video:
             setattr(self, attr, value)
 
         return self
+
+    def to_dict(self):
+        return {key: value for key, value in self.__dict__.items()}
 
     def get_video(self, id):
         """Set video properties from id
