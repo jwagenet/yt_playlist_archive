@@ -1,6 +1,7 @@
 *.bat
 *.json
 *.pyc
+*.db
 
 venv
 .venv
