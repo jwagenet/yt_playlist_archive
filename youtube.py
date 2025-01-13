@@ -59,7 +59,7 @@ class Playlist:
 
 class Video:
     def __init__(self, id_or_url=None):
-        self. id = ""
+        self.id = ""
         self.url = ""
         self.title = ""
         self.status = "unavailable"
@@ -166,13 +166,14 @@ class Video:
         return self
 
 
-def get_videos_from_ids(ids):
-    """Get list of Videos from list of ids
+def get_videos_from_ids(ids_or_urls):
+    """Get list of Videos from list of ids or urls
 
     if id is not found in result, marked as unavailable
     """
 
     callback = YOUTUBE.videos().list
+    ids = [get_id_and_url(id, VIDEO_URL_STEM)["id"] for id in ids_or_urls]
 
     items = []
     total_requests = math.ceil(len(ids) / MAX_RESULTS)
