@@ -1,3 +1,4 @@
+import argparse
 import json
 import pytube
 import os
@@ -6,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ## for finding deleted video titles https://findyoutubevideo.thetechrobo.ca/
 
-playlist_link = "https://www.youtube.com/playlist?list=PLoQb4jteUerWP2U-mfYIE4C2a1hiIFc_H"
 file_main = "video_list_main.json"
 
 
@@ -19,9 +19,10 @@ def get_video_urls(playlist_link):
     
     cache_name = "cached_urls.json"
 
+    print(os.path.exists(cache_name))
     if os.path.exists(cache_name) and (time.time() - os.path.getmtime(cache_name)) < 60*60*24:
         print("Load video links from file.")
-        with open(cache_name, 'r', encoding='utf-8') as f:
+        with open(cache_name, "r", encoding="utf-8") as f:
             video_urls = json.load(f)
 
         for i, url in enumerate(video_urls):
@@ -32,8 +33,8 @@ def get_video_urls(playlist_link):
     else:
         print("Download video links.")
         video_urls = pytube.Playlist(playlist_link).video_urls
-        with open(cache_name, 'w', encoding='utf-8') as f:
-            json.dump(list(cached_urls), f, ensure_ascii=False, indent=4)
+        with open(cache_name, "w", encoding="utf-8") as f:
+            json.dump(list(video_urls), f, ensure_ascii=False, indent=4)
 
     return video_urls
 
@@ -82,7 +83,7 @@ def get_video_info_from_urls(video_urls):
     for task in as_completed(processes):
         video_info.append(task.result())
 
-    print(f'Time taken: {time.time() - start}')
+    print(f"Time taken: {time.time() - start}")
 
     # reorder to match video_urls
     video_info = sorted(video_info,key=lambda x:video_urls.index(x["url"]))
@@ -105,8 +106,8 @@ def update_main_info(main_info, update_info):
                     main_info[i]["status"] = "removed"
                 else:
                     main_info[i]["status"] = video["status"]
+                
                 updated = True
-
                 break
 
         # add new entries with current status
@@ -114,30 +115,39 @@ def update_main_info(main_info, update_info):
             main_info.append(video)
 
     print(main_info)
-    # with open(file_main, 'w', encoding='utf-8') as f:
+    # with open(file_main, "w", encoding="utf-8") as f:
         # json.dump(main_info, f, ensure_ascii=False, indent=4)
 
     return main_info
 
 
-video_urls = get_video_urls(playlist_link)
-with open(file_main, 'r', encoding='utf-8') as f:
-    main_info = json.load(f)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+                        prog="YouTube Playlist Archive",
+                        description="Archive YouTube video title and url and update over time to catch content deletions")
+    parser.add_argument("-p", "--playlist_link")
+    parser.add_argument("-u", "--video_urls")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    args = parser.parse_args()
 
-main_urls = [video["url"] for video in main_info]
-missing_urls = [url for url in video_urls if url not in main_urls]
+    video_urls = get_video_urls(args.playlist_link)
+    with open(file_main, "r", encoding="utf-8") as f:
+        main_info = json.load(f)
 
-print(f"Missing urls: {len(missing_urls)}")
+    main_urls = [video["url"] for video in main_info]
+    missing_urls = [url for url in video_urls if url not in main_urls]
 
-if len(missing_urls) != 0:
-    update_info = get_video_info_from_urls(missing_urls)
+    print(f"Missing urls: {len(missing_urls)}")
 
-    # save to timestamped file
-    file_name = f'video_list_{time.strftime("%y%m%d")}.json'
-    with open(file_name, 'w', encoding='utf-8') as f:
-        json.dump(update_info, f, ensure_ascii=False, indent=4)
+    if len(missing_urls) != 0:
+        update_info = get_video_info_from_urls(missing_urls)
 
-    # update main file
-    update_main_info(main_info, update_info)
+        # save to timestamped file
+        file_name = f"video_list_{time.strftime("%y%m%d")}.json"
+        with open(file_name, "w", encoding="utf-8") as f:
+            json.dump(update_info, f, ensure_ascii=False, indent=4)
+
+        # update main file
+        update_main_info(main_info, update_info)
     
-    
+
