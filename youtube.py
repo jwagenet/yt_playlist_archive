@@ -17,6 +17,7 @@ with open(KEY_FILE, "r") as f:
 YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
 
+class Playlist:
     def __init__(self, id_or_url):
         id_and_url = get_id_and_url(id_or_url, PLAYLIST_URL_STEM)
         self.id = id_and_url["id"]
@@ -24,21 +25,19 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
         self.get_info()
 
-
     def get_info(self):
         """Get playlist properties"""
 
         callback = YOUTUBE.playlists().list
         desc = "Fetch playlist"
         params = {
-            "part":         "snippet",
-            "id":   self.id,
+            "part": "snippet",
+            "id": self.id,
         }
 
         playlist = get_pagenated_response(callback, params, desc, max_results=1)[0]
 
         self.title = playlist["snippet"]["title"]
-
 
     def get_videos(self):
         """Get list of videos in playlist"""
@@ -46,7 +45,7 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
         callback = YOUTUBE.playlistItems().list
         desc = "Fetch playlist items"
         params = {
-            "part":       "snippet, status",
+            "part": "snippet, status",
             "playlistId": self.id,
         }
 
@@ -54,11 +53,11 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
         return [Video().from_youtube_video(item) for item in items]
 
 
+class Video:
     def __init__(self, id_or_url=None):
         if id_or_url:
             self.update(get_id_and_url(id_or_url, VIDEO_URL_STEM))
             self.get_video()
-
 
     def __repr__(self):
         vals = []
@@ -69,17 +68,15 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
         repr_str = ", ".join(vals)
         return f"Video({repr_str})"
 
-
     def __eq__(self, other):
         # comparing id only because other properties could change
         return self.id == other.id
-
 
     def update(self, other):
         """Update Video properties from other, which could be dict or Video"""
 
         if isinstance(other, Video):
-            attrs =  other.__dict__
+            attrs = other.__dict__
 
         elif isinstance(other, dict):
             attrs = other
@@ -92,10 +89,9 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
         return self
 
-
     def get_video(self, id):
         """Set video properties from id
-        
+
         Only one api response expected
         Sets status to "unavailable" if empty response
         """
@@ -104,23 +100,20 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
         desc = "Fetch video item"
         params = {
             "part": "snippet, status",
-            "id":   id,
+            "id": id,
         }
 
         videos = get_pagenated_response(callback, params, desc, max_results=1)
 
         if len(videos) == 0:
-            self.update({
-                "status": "unavailable"
-            })
+            self.update({"status": "unavailable"})
 
         else:
             self.from_youtube_video(videos[0])
 
-
     def from_youtube_video(self, youtube_video):
         """Set Video properties from either a #video or #playlisItem response
-        
+
         returns self for when initializing video without id:
             Video().from_youtube_video(youtube_video)
         """
@@ -130,19 +123,28 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
             if "kind" in youtube_video and youtube_video["kind"] == kind:
                 self.update(get_id_and_url(youtube_video["id"], VIDEO_URL_STEM))
 
-                self.update(get_id_and_url(youtube_video["snippet"]["resourceId"]["videoId"], VIDEO_URL_STEM))
+            elif (
+                "snippet" in youtube_video
+                and "resourceId" in youtube_video["snippet"]
+                and "kind" in youtube_video["snippet"]["resourceId"]
+                and youtube_video["snippet"]["resourceId"]["kind"] == "youtube#video"
+            ):
+                self.update(
+                    get_id_and_url(
+                        youtube_video["snippet"]["resourceId"]["videoId"],
+                        VIDEO_URL_STEM,
+                    )
+                )
 
             else:
-
-
                 raise NotImplementedError
 
-            self.update({
-                "id": id,
-                "url": url,
-                "title": youtube_video["snippet"]["title"],
-                "status": youtube_video["status"]["privacyStatus"]
-            })
+            self.update(
+                {
+                    "title": youtube_video["snippet"]["title"],
+                    "status": youtube_video["status"]["privacyStatus"],
+                }
+            )
 
         else:
             raise NotImplementedError
@@ -152,7 +154,7 @@ YOUTUBE = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
 def get_videos_from_ids(ids):
     """Get list of Videos from list of ids
-    
+
     if id is not found in result, marked as unavailable
     """
 
@@ -165,7 +167,7 @@ def get_videos_from_ids(ids):
         desc = f"Fetch video items {i + 1}/{total_requests}"
         params = {
             "part": "snippet, status",
-            "id":   ",".join(ids[start_index:start_index + MAX_RESULTS]),
+            "id": ",".join(ids[start_index : start_index + MAX_RESULTS]),
         }
         items.extend(get_pagenated_response(callback, params, desc))
 
@@ -178,7 +180,7 @@ def get_videos_from_ids(ids):
             video.update({"status": "unavailable"})
             videos.append(video)
 
-    videos = sorted(videos, key=lambda x:ids.index(x.id))
+    videos = sorted(videos, key=lambda x: ids.index(x.id))
 
     return videos
 
@@ -199,9 +201,9 @@ def get_pagenated_response(callback, params, desc, max_results=MAX_RESULTS):
     """
 
     payload = {
-        "pageToken":    "",
-        "maxResults":   max_results,
-        }
+        "pageToken": "",
+        "maxResults": max_results,
+    }
 
     payload.update(params)
 
@@ -215,16 +217,14 @@ def get_pagenated_response(callback, params, desc, max_results=MAX_RESULTS):
             response = request.execute()
 
             if not total_results:
-                    total_results = response["pageInfo"]["totalResults"]
-                    progress.update(task, total=total_results)
+                total_results = response["pageInfo"]["totalResults"]
+                progress.update(task, total=total_results)
 
             items.extend(response["items"])
             progress.update(task, advance=len(items))
 
             if "nextPageToken" in response:
-                payload.update({
-                    "pageToken": response["nextPageToken"],
-                    })
+                payload.update({"pageToken": response["nextPageToken"]})
             else:
                 break
 
