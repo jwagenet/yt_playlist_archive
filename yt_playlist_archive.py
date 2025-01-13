@@ -5,6 +5,7 @@ import time
 
 from rich.progress import Progress
 
+from sqlite_helper import Table
 from youtube import Playlist, Video, get_videos_from_ids, get_id_and_url, VIDEO_URL_STEM
 
 ## for finding deleted video titles https://findyoutubevideo.thetechrobo.ca/
@@ -53,56 +54,59 @@ def get_current_videos(playlist, use_cache=False):
     return videos
 
 
-def update_archive_info(archive_videos, update_videos):
+def update_archive_info(archive_videos, current_videos):
     """Update main list with video status and append new videos from updated video info.
 
     Returns list of video info dicts
     """
-    change_count = {"available": 0, "removed": 0, "private": 0, "unavailable": 0}
 
+    updated_videos = []
     with Progress() as progress:
-        task = progress.add_task("Update archive items", total=len(update_videos))
-        for update in update_videos:
-            updated = False
+        task = progress.add_task("Update archive items", total=len(current_videos))
+        for current in current_videos:
 
-            if update.status == "public" or update.status == "unlisted":
-                update.status = "available"
+            # conform status
+            if current.status == "public" or current.status == "unlisted":
+                current.status = "available"
             elif (
-                update.status == "privacyStatusUnspecified"
-                and update.title == "Deleted video"
+                current.status == "privacyStatusUnspecified"
+                and current.title == "Deleted video"
             ):
-                update.status = "unavailable"
+                current.status = "unavailable"
 
+            # check for private/unavailable change
+            updated = False
             for i, archive in enumerate(archive_videos):
                 if (
-                    update == archive
-                    and update.status != archive.status
-                    and update.status in ["private", "unavailable"]
+                    current == archive
+                    and current.status != archive.status
+                    and current.status in ["private", "unavailable"]
                 ):
-                    archive_videos[i].update({"status": update.status})
-                    change_count[update.status] += 1
+                    updated_videos.append(archive.update({"status": current.status}))
                     updated = True
                     break
 
             # add new entries with current status
-            if not updated and update not in archive_videos:
-                archive_videos.append(update)
-                change_count[update.status] += 1
+            if not updated and current not in archive_videos:
+                updated_videos.append(current)
 
             progress.update(task, advance=1)
 
     for i, archive in enumerate(archive_videos):
         # if entry exists, was deleted from playlist rather than private/deleted
-        if archive not in update_videos:
-            archive_videos[i].update({"status": "removed"})
-            change_count["removed"] += 1
+        if archive not in current_videos and archive.status != "removed":
+            updated_videos.append(archive.update({"status": "removed"}))
+
+    change_count = {"available": 0, "removed": 0, "private": 0, "unavailable": 0}
+    for video in updated_videos:
+        change_count[video.status] += 1
 
     count_str = ""
     for key, value in change_count.items():
         count_str += f"\n{key}: {value}"
     print(f"Updates:{count_str}")
 
-    return archive_videos
+    return updated_videos
 
 
 if __name__ == "__main__":
@@ -116,33 +120,57 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
+    db_path = "playlist_archive.db"
+
+
     playlist = Playlist(args.playlist_url)
-    playlist_title = (
+    playlist.title = (
         playlist.title if args.playlist_title is None else args.playlist_title
     )
+    data = playlist.to_dict()
 
+    # setup main table
+    columns = Video().to_dict().keys()
+    with Table(db_path, "playlists") as table:
+        table.create(list(data.keys()), "id")
+        table.insert(data)
+
+        # spoof title to set child table
+        table.title = data["title"]
+        table.create(columns, "id")
+
+
+    # get videos from playlist
     # has cache option, but for some reason can't get private videos when using videos.list, same num api calls anyway
-    videos = (
+    current_videos = (
         get_current_videos(playlist, False)
         if args.video_urls is None
         else args.video_urls
     )
 
-    # get archive, if it exists
-    archive_file_name = f"archive_{playlist_title}.json"
-    archive_info = []
-    if os.path.exists(archive_file_name):
-        with open(archive_file_name, "r", encoding="utf-8") as f:
-            archive_info = json.load(f)
 
-    archive_videos = [Video().update(archive) for archive in archive_info]
-    archive_videos = update_archive_info(archive_videos, videos)
+    # get archive from playlist table
+    with Table(db_path, playlist.title) as table:
+        archive_data = table.select(columns)
 
-    with open(archive_file_name, "w", encoding="utf-8") as f:
-        json.dump(
-            archive_videos,
-            f,
-            default=lambda o: o.__dict__,
-            ensure_ascii=False,
-            indent=4,
-        )
+    # update archive playlist table
+    archive_videos = [Video().update(archive) for archive in archive_data]
+    update_videos = update_archive_info(archive_videos, current_videos)
+
+    update_data  = [video.to_dict() for video in update_videos]
+    with Table(db_path, playlist.title) as table:
+        for update in update_data:
+            table.upsert(update, "id", "status")
+
+    # if os.path.exists(archive_file_name):
+    #     with open(archive_file_name, "r", encoding="utf-8") as f:
+    #         archive_info = json.load(f)
+
+    # with open(archive_file_name, "w", encoding="utf-8") as f:
+    #     json.dump(
+    #         archive_videos,
+    #         f,
+    #         default=lambda o: o.__dict__,
+    #         ensure_ascii=False,
+    #         indent=4,
+    #     )
