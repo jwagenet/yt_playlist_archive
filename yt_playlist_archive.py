@@ -118,12 +118,16 @@ def get_updated_videos(old_videos, new_videos):
     return updated_videos
 
 
-def update_archive(db_path, playllst_title, new_videos):
+def get_archive_videos(db_path, playllst_title):
     # get archive from playlist table
     columns = Video().to_dict().keys()
     with Table(db_path, playllst_title) as table:
         archive_data = table.select(columns)
 
+    return [Video().update(archive) for archive in archive_data]
+
+
+def update_archive(db_path, playllst_title, archive_videos, new_videos):
     # update archive playlist table
     archive_videos = [Video().update(archive) for archive in archive_data]
     update_videos = get_updated_videos(archive_videos, new_videos)
@@ -176,7 +180,8 @@ if __name__ == "__main__":
         else:
             new_videos = playlist.get_videos()
 
-        update_archive(args.db_path, playlist.title, new_videos)
+        archive_videos = get_archive_videos(args.db_path, playlist.title)
+        update_archive(args.db_path, playlist.title, archive_videos, new_videos)
 
         if args.cache:
             dump_videos_to_file(cache_path, new_videos)
