@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import os
 import time
@@ -16,6 +17,10 @@ def get_videos_from_file(path):
     if extension == ".json":
         with open(path, "r", encoding="utf-8") as f:
             video_info = json.load(f)
+
+    elif extension == ".csv":
+        with open(path, "r", newline="", encoding="utf-8") as f:
+            video_info = [row for row in csv.DictReader(f)]
 
     else:
         raise NotImplementedError
@@ -41,6 +46,14 @@ def dump_videos_to_file(path, videos):
                 ensure_ascii=False,
                 indent=4,
             )
+
+    elif extension == ".csv":
+        video_info = [video.to_dict() for video in videos]
+        print(video_info)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=video_info[0].keys())
+            writer.writeheader()
+            writer.writerows(video_info)
 
     else:
         raise NotImplementedError
@@ -129,9 +142,7 @@ def get_archive_videos(db_path, playllst_title):
 
 def update_archive(db_path, playllst_title, archive_videos, new_videos):
     # update archive playlist table
-    archive_videos = [Video().update(archive) for archive in archive_data]
     update_videos = get_updated_videos(archive_videos, new_videos)
-
     update_data = [video.to_dict() for video in update_videos]
     with Table(db_path, playllst_title) as table:
         for update in update_data:
@@ -161,13 +172,14 @@ if __name__ == "__main__":
     # )
 
     if args.export_file:
-        raise NotImplementedError
+        archive_videos = get_archive_videos(args.db_path, playlist.title)
+        dump_videos_to_file(args.export_file, archive_videos)
 
     else:
         setup_playlist_tables(args.db_path, playlist)
         cache_path = f"cache_{playlist.title}.json"
 
-        if args.import_file and os.path.exists(args.import_file):
+        if args.import_file:
             new_videos = get_videos_from_file(args.import_file)
 
         elif (
