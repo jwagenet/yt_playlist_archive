@@ -9,8 +9,6 @@ from rich.progress import Progress
 from sqlite_helper import Table
 from youtube import Playlist, Video, get_videos_from_ids
 
-## for finding deleted video titles https://findyoutubevideo.thetechrobo.ca/
-
 
 def get_videos_from_file(path):
     _, extension = os.path.splitext(path)
